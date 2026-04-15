@@ -1,5 +1,11 @@
 // Site URLs
-import type { NotificationSettings, NotificationRecord, PluginConfig } from './interfaces'
+import type {
+  NotificationSettings,
+  NotificationRecord,
+  PluginConfig,
+  BatteryBadgePosition,
+  BatteryBadgeSize,
+} from './interfaces'
 
 export const reportsApiBaseUrl = 'https://deckverified.games/deck-verified/api/v1'
 export const reportsWebsiteBaseUrl = 'https://deckverified.games'
@@ -11,6 +17,12 @@ export const defaultNotificationSettings: NotificationSettings = {
   onGameStopWithoutReports: true,
   notifyOncePerGame: false,
 }
+
+export const defaultBatteryBadgePosition: BatteryBadgePosition = 'top-right'
+export const defaultBatteryBadgeSize: BatteryBadgeSize = 'regular'
+
+const validBadgePositions = ['top-right', 'top-left', 'bottom-right', 'bottom-left'] as const
+const validBadgeSizes = ['compact', 'regular', 'large'] as const
 
 const notificationSettingsKey = `${__PLUGIN_NAME__}:notificationRecord`
 
@@ -96,6 +108,8 @@ export const getPluginConfig = (): PluginConfig => {
   const defaultConfig: PluginConfig = {
     filterDevices: [],
     showAllApps: false,
+    batteryBadgePosition: defaultBatteryBadgePosition,
+    batteryBadgeSize: defaultBatteryBadgeSize,
     notificationSettings: { ...defaultNotificationSettings },
   }
   const dataJson = window.localStorage.getItem(pluginSettingsKey)
@@ -115,6 +129,12 @@ export const getPluginConfig = (): PluginConfig => {
     ...defaultNotificationSettings,
     ...(config.notificationSettings ?? {}),
   }
+  config.batteryBadgePosition = validBadgePositions.includes(config.batteryBadgePosition)
+    ? config.batteryBadgePosition
+    : defaultBatteryBadgePosition
+  config.batteryBadgeSize = validBadgeSizes.includes(config.batteryBadgeSize)
+    ? config.batteryBadgeSize
+    : defaultBatteryBadgeSize
   // If the installation ID is not present, generate one and save it.
   if (!('installationId' in config) || !config.installationId) {
     config.installationId = generateUniqueId()

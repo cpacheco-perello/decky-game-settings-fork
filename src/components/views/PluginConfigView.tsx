@@ -1,12 +1,19 @@
-import { PanelSection, PanelSectionRow, DialogButton, Focusable, ToggleField, Dropdown, ButtonItem } from '@decky/ui'
+import { PanelSection, PanelSectionRow, DialogButton, Focusable, ToggleField, Dropdown, ButtonItem, showModal } from '@decky/ui'
 import { useState, useEffect, CSSProperties, useMemo } from 'react'
 import { MdArrowBack } from 'react-icons/md'
-import type { Devices, PluginConfig, NotificationSettings } from '../../interfaces'
-import { getPluginConfig, setPluginConfig, defaultNotificationSettings } from '../../constants'
+import type { Devices, PluginConfig, NotificationSettings, BatteryBadgePosition, BatteryBadgeSize } from '../../interfaces'
+import {
+  getPluginConfig,
+  setPluginConfig,
+  defaultNotificationSettings,
+  defaultBatteryBadgePosition,
+  defaultBatteryBadgeSize,
+} from '../../constants'
 import { fetchDeviceList } from '../../hooks/deckVerifiedApi'
 import { PanelSocialButton } from '../elements/SocialButton'
 import { SiDiscord, SiGithub, SiKofi, SiPatreon } from 'react-icons/si'
 import { popupLoginDialog } from '../elements/LoginDialog'
+import { SelectModal } from '../elements/SelectModal'
 import {
   hasToken as hasGithubToken,
   clearTokens as clearGithubTokens,
@@ -48,6 +55,19 @@ const actionButtonStyle: CSSProperties = {
   padding: '6px 10px',
   fontSize: '12px',
 }
+
+const badgePositionOptions: Array<{ label: string; value: BatteryBadgePosition }> = [
+  { label: 'Top right', value: 'top-right' },
+  { label: 'Top left', value: 'top-left' },
+  { label: 'Bottom right', value: 'bottom-right' },
+  { label: 'Bottom left', value: 'bottom-left' },
+]
+
+const badgeSizeOptions: Array<{ label: string; value: BatteryBadgeSize }> = [
+  { label: 'Compact', value: 'compact' },
+  { label: 'Regular', value: 'regular' },
+  { label: 'Large', value: 'large' },
+]
 
 const PluginConfigView: React.FC<PluginConfigViewProps> = ({ onGoBack }) => {
   const [isLoading, setIsLoading] = useState(false)
@@ -163,6 +183,53 @@ const PluginConfigView: React.FC<PluginConfigViewProps> = ({ onGoBack }) => {
     [deviceList, currentConfig.filterDevices]
   )
 
+  const selectedBadgePositionIndex = Math.max(
+    0,
+    badgePositionOptions.findIndex((option) => option.value === currentConfig.batteryBadgePosition)
+  )
+  const selectedBadgeSizeIndex = Math.max(0, badgeSizeOptions.findIndex((option) => option.value === currentConfig.batteryBadgeSize))
+
+  const selectedBadgePositionLabel =
+    badgePositionOptions[selectedBadgePositionIndex]?.label ||
+    badgePositionOptions.find((option) => option.value === defaultBatteryBadgePosition)?.label ||
+    'Top right'
+  const selectedBadgeSizeLabel =
+    badgeSizeOptions[selectedBadgeSizeIndex]?.label ||
+    badgeSizeOptions.find((option) => option.value === defaultBatteryBadgeSize)?.label ||
+    'Regular'
+
+  const openBadgePositionSelector = () => {
+    showModal(
+      <SelectModal
+        label='Select badge position'
+        options={badgePositionOptions.map((option) => option.label)}
+        selectedIndex={selectedBadgePositionIndex}
+        onClosed={(_value, index) => {
+          if (typeof index !== 'number') return
+          const next = badgePositionOptions[index]
+          if (!next) return
+          updateConfig({ batteryBadgePosition: next.value })
+        }}
+      />
+    )
+  }
+
+  const openBadgeSizeSelector = () => {
+    showModal(
+      <SelectModal
+        label='Select badge size'
+        options={badgeSizeOptions.map((option) => option.label)}
+        selectedIndex={selectedBadgeSizeIndex}
+        onClosed={(_value, index) => {
+          if (typeof index !== 'number') return
+          const next = badgeSizeOptions[index]
+          if (!next) return
+          updateConfig({ batteryBadgeSize: next.value })
+        }}
+      />
+    )
+  }
+
   useEffect(() => {
     updateDeviceList()
     const fetchProfile = async () => {
@@ -260,6 +327,27 @@ const PluginConfigView: React.FC<PluginConfigViewProps> = ({ onGoBack }) => {
             </PanelSectionRow>
           </PanelSection>
         )}
+
+        <PanelSection title='Game page badge'>
+          <PanelSectionRow>
+            <div style={fieldBlockStyle}>
+              <div style={fieldHeadingStyle}>Badge position</div>
+              <div style={helperTextStyle}>Choose where the battery badge appears in the game page header.</div>
+              <DialogButton style={actionButtonStyle} onClick={openBadgePositionSelector}>
+                {selectedBadgePositionLabel}
+              </DialogButton>
+            </div>
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <div style={fieldBlockStyle}>
+              <div style={fieldHeadingStyle}>Badge size</div>
+              <div style={helperTextStyle}>Set a compact, regular, or larger card for better readability.</div>
+              <DialogButton style={actionButtonStyle} onClick={openBadgeSizeSelector}>
+                {selectedBadgeSizeLabel}
+              </DialogButton>
+            </div>
+          </PanelSectionRow>
+        </PanelSection>
 
         <PanelSection title='Library view'>
           <PanelSectionRow>

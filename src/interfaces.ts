@@ -1,7 +1,13 @@
+export type BatteryBadgePosition = 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left'
+
+export type BatteryBadgeSize = 'compact' | 'regular' | 'large'
+
 export interface PluginConfig {
   installationId?: string
   filterDevices: string[]
   showAllApps: boolean
+  batteryBadgePosition: BatteryBadgePosition
+  batteryBadgeSize: BatteryBadgeSize
   reportDraft?: ReportDraft
   notificationSettings?: NotificationSettings
 }
