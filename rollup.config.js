@@ -1,6 +1,9 @@
 import deckyPlugin from "@decky/rollup";
-import pkg from "./package.json" assert {type: "json"};
 import replace from '@rollup/plugin-replace';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const pkg = require('./package.json');
 
 export default deckyPlugin({
     plugins: [

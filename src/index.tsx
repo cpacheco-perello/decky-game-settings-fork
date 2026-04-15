@@ -1,12 +1,14 @@
-import { definePlugin } from '@decky/api'
+import { definePlugin, routerHook } from '@decky/api'
 import QuickAccessMenuRouter from './components/QuickAccessMenuRouter'
 import { gameChangeActions } from './hooks/gameLibrary'
 import DeckSettingsIcon from './components/icons/DeckSettingsIcon'
+import patchLibraryApp, { gameDetailsRoute } from './lib/patchLibraryApp'
 
 export default definePlugin(() => {
   // Register for game lifetime change notifications
   console.log('[decky-game-settings:index] Registering background game change listener.')
   const gameChangeListener = gameChangeActions()
+  const libraryPatch = patchLibraryApp()
   return {
     // The name shown in various decky menus
     name: 'DeckyGameSettings',
@@ -22,6 +24,9 @@ export default definePlugin(() => {
     onDismount() {
       console.log('[decky-game-settings:index] Unloading background game change listener.')
       if (gameChangeListener && typeof gameChangeListener.unregister === 'function') gameChangeListener.unregister()
+      if (libraryPatch) {
+        routerHook.removePatch(gameDetailsRoute, libraryPatch)
+      }
     },
   }
 })
