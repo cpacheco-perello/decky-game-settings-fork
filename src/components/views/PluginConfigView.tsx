@@ -372,7 +372,7 @@ const PluginConfigView: React.FC<PluginConfigViewProps> = ({ onGoBack }) => {
                 onChange={(value) => updateConfig({ useBatteryTrackerTdp: value })}
               />
               <div style={helperTextStyle}>
-                If the Battery Tracker plugin is installed, use its per-game average power as fallback TDP.
+                When enabled and Battery Tracker is detected, tracker TDP has priority and manual per-game TDP editing is locked.
               </div>
             </div>
           </PanelSectionRow>

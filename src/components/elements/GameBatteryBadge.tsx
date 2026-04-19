@@ -66,17 +66,20 @@ const GameBatteryBadge: React.FC<GameBatteryBadgeProps> = () => {
   if (!validAppId && !routeGameName) return null
   if (shouldHideBadge) return null
 
-  const activeTdpWatts = perGameTdpWatts ?? importedTdpWatts ?? 0
-  const tdpSourceLabel = perGameTdpWatts !== null
-    ? 'per-game'
-    : importedTdpWatts !== null
-      ? 'Battery Tracker'
-      : 'per-game'
+  const isTrackerPriorityMode = pluginConfig.useBatteryTrackerTdp && isBatteryTrackerDetected
+  const activeTdpWatts = isTrackerPriorityMode
+    ? (importedTdpWatts ?? 0)
+    : (perGameTdpWatts ?? 0)
+  const tdpSourceLabel = isTrackerPriorityMode ? 'Battery Tracker' : 'per-game'
   const expectedMinutesFromCustomTdp = calculateEstimatedMinutesFromTdp(deviceBatteryCapacityWh, activeTdpWatts)
   const colorMinutes = summary.batteryLifeMinutes ?? expectedMinutesFromCustomTdp
   const tone = getBatteryTone(colorMinutes)
 
   const openPerGameTdpModal = () => {
+    if (isTrackerPriorityMode) {
+      return
+    }
+
     showModal(
       <TextFieldModal
         label='Set per-game average TDP (W)'
@@ -217,15 +220,25 @@ const GameBatteryBadge: React.FC<GameBatteryBadgeProps> = () => {
           </div>
         )}
 
-        {pluginConfig.useBatteryTrackerTdp && !perGameTdpWatts && isBatteryTrackerDetected && importedTdpWatts === null && (
+        {isTrackerPriorityMode && importedTdpWatts === null && (
           <div style={secondaryTextStyle}>Battery Tracker enabled, but no matching TDP data was found for this game.</div>
+        )}
+
+        {isTrackerPriorityMode && (
+          <div style={secondaryTextStyle}>Manual per-game TDP is locked while Battery Tracker mode is active.</div>
         )}
 
         <div style={footerStyle}>
           <div style={secondaryTextStyle}>{reportCountText}</div>
           <div style={footerButtonsStyle}>
-            <DialogButton style={{ ...buttonStyle, minWidth: '70px' }} onClick={openPerGameTdpModal}>
-              {perGameTdpWatts !== null ? `${perGameTdpWatts}W` : importedTdpWatts !== null ? `BT ${importedTdpWatts}W` : 'Set TDP'}
+            <DialogButton
+              style={{ ...buttonStyle, minWidth: '70px', opacity: isTrackerPriorityMode ? 0.7 : 1 }}
+              onClick={openPerGameTdpModal}
+              disabled={isTrackerPriorityMode}
+            >
+              {isTrackerPriorityMode
+                ? importedTdpWatts !== null ? `BT ${importedTdpWatts}W` : 'BT --'
+                : perGameTdpWatts !== null ? `${perGameTdpWatts}W` : 'Set TDP'}
             </DialogButton>
             <DialogButton style={buttonStyle} onClick={openGameReport}>
               Reports

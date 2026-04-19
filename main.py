@@ -311,9 +311,10 @@ class Plugin:
 
         return ''
 
-    async def get_battery_tracker_recent_power_data(self, lookback: int = 7):
+    async def get_battery_tracker_recent_power_data(self):
         """
-        Reads Battery Tracker's runtime DB and returns per-app average discharging power.
+        Reads Battery Tracker's runtime DB and returns the latest historical
+        discharging power sample per app.
 
         Return shape:
           {
@@ -326,25 +327,29 @@ class Plugin:
             'power_data': [],
         }
 
-        try:
-            safe_lookback = int(lookback)
-        except Exception:
-            safe_lookback = 7
-        safe_lookback = max(1, min(30, safe_lookback))
-
         db_path = self._resolve_battery_tracker_db_path()
         if not db_path:
             return default_result
 
         con = None
         try:
-            start_time = int(time.time() - 24 * safe_lookback * 3600)
             con = sqlite3.connect(db_path)
             cursor = con.cursor()
 
             rows = cursor.execute(
-                'select app, power, status from battery where time > ?',
-                (start_time,),
+                '''
+                select b.app, b.power, b.time
+                from battery b
+                inner join (
+                    select app, max(time) as max_time
+                    from battery
+                    where status = -1
+                    group by app
+                ) latest
+                    on latest.app = b.app
+                    and latest.max_time = b.time
+                where b.status = -1
+                ''',
             ).fetchall()
 
             if not rows:
@@ -353,11 +358,8 @@ class Plugin:
                     'power_data': [],
                 }
 
-            per_app_powers = {}
-            for app, power, status in rows:
-                if status != -1:
-                    continue
-
+            per_app_latest = {}
+            for app, power, _time in rows:
                 name = str(app or '').strip() or 'Unknown'
                 if name == 'Unknown':
                     name = 'Steam'
@@ -370,16 +372,16 @@ class Plugin:
                 if watts <= 0:
                     continue
 
-                per_app_powers.setdefault(name, []).append(watts)
+                # In case of duplicate app aliases, keep the highest latest sample.
+                prev = per_app_latest.get(name)
+                if prev is None or watts > prev:
+                    per_app_latest[name] = watts
 
             power_data = []
-            for name, values in per_app_powers.items():
-                if not values:
-                    continue
-                avg = int(sum(values) / len(values))
+            for name, watts in per_app_latest.items():
                 power_data.append({
                     'name': name,
-                    'average_power': avg,
+                    'average_power': int(round(watts)),
                 })
 
             power_data.sort(key=lambda x: -x.get('average_power', 0))

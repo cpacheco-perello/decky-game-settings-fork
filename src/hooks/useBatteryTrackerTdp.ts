@@ -22,16 +22,6 @@ type UseBatteryTrackerTdpResult = {
   isBatteryTrackerDetected: boolean
 }
 
-declare global {
-  interface Window {
-    __DECKY_SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED_deckyLoaderAPIInit?: {
-      connect: (version: number, pluginName: string) => any
-    }
-  }
-}
-
-const BATTERY_TRACKER_PLUGIN_NAMES = ['Battery Tracker', 'steam-deck-battery-tracker']
-
 const normalise = (value: unknown): string => {
   if (typeof value !== 'string') return ''
   return value
@@ -61,22 +51,6 @@ const clampTdp = (watts: number): number => {
     batteryBadgeAverageTdpRange.min,
     Math.min(batteryBadgeAverageTdpRange.max, Math.round(watts))
   )
-}
-
-const unwrapResult = (raw: any): BatteryTrackerRecentData | null => {
-  if (!raw) return null
-
-  if (typeof raw === 'object' && 'success' in raw && 'result' in raw) {
-    const wrapped = (raw as any).result
-    return wrapped && typeof wrapped === 'object' ? (wrapped as BatteryTrackerRecentData) : null
-  }
-
-  return typeof raw === 'object' ? (raw as BatteryTrackerRecentData) : null
-}
-
-const getPowerData = (raw: any): BatteryTrackerPowerEntry[] => {
-  const data = unwrapResult(raw)
-  return Array.isArray(data?.power_data) ? data.power_data : []
 }
 
 const toTokenSet = (value: string): Set<string> => {
@@ -135,51 +109,9 @@ const pickBestCandidate = (requestedName: string, entries: BatteryTrackerPowerEn
   return null
 }
 
-const fetchRecentPowerData = async (api: any): Promise<BatteryTrackerPowerEntry[]> => {
-  // Some loader/plugin combos accept kwargs, others positional, and some only default call.
-  const attempts: Array<() => Promise<any>> = [
-    () => api.call('get_recent_data', { lookback: 7 }),
-    () => api.call('get_recent_data', 7),
-    () => api.call('get_recent_data'),
-  ]
-
-  for (const attempt of attempts) {
-    try {
-      const raw = await attempt()
-      const powerData = getPowerData(raw)
-      if (powerData.length > 0) {
-        return powerData
-      }
-    } catch {
-      // Continue with next call shape.
-    }
-  }
-
-  return []
-}
-
-const findPluginApi = (): any | null => {
-  const internal = window.__DECKY_SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED_deckyLoaderAPIInit
-  if (!internal?.connect) return null
-
-  for (const pluginName of BATTERY_TRACKER_PLUGIN_NAMES) {
-    try {
-      const api = internal.connect(2, pluginName)
-      if (api?.call) return api
-    } catch {
-      try {
-        const api = internal.connect(1, pluginName)
-        if (api?.call) return api
-      } catch {}
-    }
-  }
-
-  return null
-}
-
 const fetchRecentPowerDataFromBackend = async (): Promise<BatteryTrackerRecentData> => {
   try {
-    const data = await call<[number], BatteryTrackerRecentData>('get_battery_tracker_recent_power_data', 7)
+    const data = await call<[], BatteryTrackerRecentData>('get_battery_tracker_recent_power_data')
     return data && typeof data === 'object'
       ? data
       : { is_detected: false, power_data: [] }
@@ -210,8 +142,6 @@ export const useBatteryTrackerTdp = ({ enabled, gameName }: UseBatteryTrackerTdp
         return
       }
 
-      const api = findPluginApi()
-
       if (!cancelled) {
         setIsBatteryTrackerDetected(false)
       }
@@ -225,15 +155,7 @@ export const useBatteryTrackerTdp = ({ enabled, gameName }: UseBatteryTrackerTdp
           setIsBatteryTrackerDetected(Boolean(backendData.is_detected))
         }
 
-        let powerData = backendPowerData
-
-        // Legacy fallback: attempt direct frontend bridge only if backend found no data.
-        if (powerData.length === 0 && api) {
-          powerData = await fetchRecentPowerData(api)
-          if (!cancelled && powerData.length > 0) {
-            setIsBatteryTrackerDetected(true)
-          }
-        }
+        const powerData = backendPowerData
 
         const candidate = pickBestCandidate(stableGameName, powerData)
 
