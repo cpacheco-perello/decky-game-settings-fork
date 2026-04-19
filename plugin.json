@@ -1,0 +1,18 @@
+{
+  "name": "Deck Settings",
+  "author": "cpacheco-perello and contributors",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": [
+      "config",
+      "settings",
+      "setup",
+      "game",
+      "verified",
+      "deckverified"
+    ],
+    "description": "Fetch and display community-driven game compatibility, settings, and configuration reports.",
+    "image": "https://raw.githubusercontent.com/cpacheco-perello/decky-game-settings-fork/main/assets/screenshot.jpg"
+  }
+}
