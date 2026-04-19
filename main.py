@@ -6,6 +6,7 @@ import time
 import uuid
 import urllib.request
 import urllib.error
+import sqlite3
 
 # The decky plugin module is located at decky-loader/plugin
 # For easy intellisense checkout the decky-loader code repo
@@ -212,6 +213,44 @@ class Plugin:
         except Exception:
             return []
 
+    def _is_emmc_from_dev(self, dev_path: str) -> bool:
+        """Best-effort detection for eMMC-backed block devices."""
+        try:
+            name = os.path.basename(str(dev_path or ''))
+            if not name:
+                return False
+
+            # Direct patterns
+            if name.startswith('mmcblk'):
+                return True
+            if name.startswith('nvme') or name.startswith('sd'):
+                return False
+
+            # Strip partition suffixes (e.g. mmcblk0p3, nvme0n1p2, sda2)
+            base = name
+            if 'p' in base and base.split('p')[-1].isdigit():
+                base = base[:base.rfind('p')]
+            else:
+                base = base.rstrip('0123456789')
+
+            if base.startswith('mmcblk'):
+                return True
+            if base.startswith('nvme') or base.startswith('sd'):
+                return False
+
+            # Sysfs fallback: check subsystem symlink target
+            subsystem_path = f'/sys/class/block/{base}/device/subsystem'
+            if os.path.exists(subsystem_path):
+                target = os.path.realpath(subsystem_path).lower()
+                if 'mmc' in target:
+                    return True
+                if 'nvme' in target or '/scsi' in target or '/ata' in target:
+                    return False
+        except Exception:
+            pass
+
+        return False
+
     async def is_emmc_storage(self) -> bool:
         """Simple check to determine if root/home is on eMMC (mmcblk) vs NVMe."""
         try:
@@ -236,3 +275,127 @@ class Plugin:
             except Exception:
                 pass
             return False
+
+    def _resolve_battery_tracker_db_path(self) -> str:
+        """Best-effort lookup for the Battery Tracker runtime SQLite database."""
+        cached = getattr(self, '_battery_tracker_db_path', None)
+        if isinstance(cached, str) and cached and os.path.isfile(cached):
+            return cached
+
+        data_root = os.path.join(decky.DECKY_HOME, 'data')
+        candidates = [
+            os.path.join(data_root, 'steam-deck-battery-tracker', 'battery.db'),
+            os.path.join(data_root, 'Battery Tracker', 'battery.db'),
+            os.path.join(data_root, 'battery-tracker', 'battery.db'),
+        ]
+
+        for path in candidates:
+            if os.path.isfile(path):
+                self._battery_tracker_db_path = path
+                return path
+
+        # Fallback: scan first-level plugin runtime directories under DECKY_HOME/data.
+        try:
+            if os.path.isdir(data_root):
+                for entry in os.listdir(data_root):
+                    candidate = os.path.join(data_root, entry, 'battery.db')
+                    if not os.path.isfile(candidate):
+                        continue
+
+                    key = str(entry or '').lower()
+                    if 'battery' in key and 'tracker' in key:
+                        self._battery_tracker_db_path = candidate
+                        return candidate
+        except Exception:
+            pass
+
+        return ''
+
+    async def get_battery_tracker_recent_power_data(self, lookback: int = 7):
+        """
+        Reads Battery Tracker's runtime DB and returns per-app average discharging power.
+
+        Return shape:
+          {
+            "is_detected": bool,
+            "power_data": [{"name": str, "average_power": int}]
+          }
+        """
+        default_result = {
+            'is_detected': False,
+            'power_data': [],
+        }
+
+        try:
+            safe_lookback = int(lookback)
+        except Exception:
+            safe_lookback = 7
+        safe_lookback = max(1, min(30, safe_lookback))
+
+        db_path = self._resolve_battery_tracker_db_path()
+        if not db_path:
+            return default_result
+
+        con = None
+        try:
+            start_time = int(time.time() - 24 * safe_lookback * 3600)
+            con = sqlite3.connect(db_path)
+            cursor = con.cursor()
+
+            rows = cursor.execute(
+                'select app, power, status from battery where time > ?',
+                (start_time,),
+            ).fetchall()
+
+            if not rows:
+                return {
+                    'is_detected': True,
+                    'power_data': [],
+                }
+
+            per_app_powers = {}
+            for app, power, status in rows:
+                if status != -1:
+                    continue
+
+                name = str(app or '').strip() or 'Unknown'
+                if name == 'Unknown':
+                    name = 'Steam'
+
+                try:
+                    watts = float(power) / 10.0
+                except Exception:
+                    continue
+
+                if watts <= 0:
+                    continue
+
+                per_app_powers.setdefault(name, []).append(watts)
+
+            power_data = []
+            for name, values in per_app_powers.items():
+                if not values:
+                    continue
+                avg = int(sum(values) / len(values))
+                power_data.append({
+                    'name': name,
+                    'average_power': avg,
+                })
+
+            power_data.sort(key=lambda x: -x.get('average_power', 0))
+            return {
+                'is_detected': True,
+                'power_data': power_data,
+            }
+        except Exception as e:
+            try:
+                decky.logger.warning(f'get_battery_tracker_recent_power_data failed: {e}')
+            except Exception:
+                pass
+            return default_result
+        finally:
+            try:
+                if con is not None:
+                    con.close()
+            except Exception:
+                pass

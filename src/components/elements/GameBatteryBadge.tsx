@@ -14,6 +14,7 @@ import { useBatteryBadgeData } from '../../hooks/useBatteryBadgeData'
 import { TextFieldModal } from './TextFieldModal'
 import { useGameIdentity } from '../../hooks/useGameIdentity'
 import { useGamePageVisibility } from '../../hooks/useGamePageVisibility'
+import { useBatteryTrackerTdp } from '../../hooks/useBatteryTrackerTdp'
 import { calculateEstimatedMinutesFromTdp, useDeviceBatteryProfile } from '../../hooks/useDeviceBatteryProfile'
 import {
   cardBaseStyle,
@@ -46,6 +47,10 @@ const GameBatteryBadge: React.FC<GameBatteryBadgeProps> = () => {
   const shouldHideBadge = useGamePageVisibility({ appId: validAppId, badgeRef })
   const { deviceLabel, deviceBatteryCapacityWh } = useDeviceBatteryProfile()
   const [perGameTdpWatts, setPerGameTdpWatts] = useState<number | null>(null)
+  const { importedTdpWatts, isBatteryTrackerDetected } = useBatteryTrackerTdp({
+    enabled: pluginConfig.useBatteryTrackerTdp,
+    gameName: routeGameName,
+  })
 
   useEffect(() => {
     setPerGameTdpWatts(getGameTdpOverrideWatts(perGameTdpKey))
@@ -61,7 +66,12 @@ const GameBatteryBadge: React.FC<GameBatteryBadgeProps> = () => {
   if (!validAppId && !routeGameName) return null
   if (shouldHideBadge) return null
 
-  const activeTdpWatts = perGameTdpWatts ?? 0
+  const activeTdpWatts = perGameTdpWatts ?? importedTdpWatts ?? 0
+  const tdpSourceLabel = perGameTdpWatts !== null
+    ? 'per-game'
+    : importedTdpWatts !== null
+      ? 'Battery Tracker'
+      : 'per-game'
   const expectedMinutesFromCustomTdp = calculateEstimatedMinutesFromTdp(deviceBatteryCapacityWh, activeTdpWatts)
   const colorMinutes = summary.batteryLifeMinutes ?? expectedMinutesFromCustomTdp
   const tone = getBatteryTone(colorMinutes)
@@ -198,7 +208,7 @@ const GameBatteryBadge: React.FC<GameBatteryBadgeProps> = () => {
 
         {activeTdpWatts > 0 && (
           <div>
-            <div style={metricLabelStyle}>Expected @ {activeTdpWatts}W (per-game)</div>
+            <div style={metricLabelStyle}>Expected @ {activeTdpWatts}W ({tdpSourceLabel})</div>
             <div style={{ ...metricValueStyle, fontSize: sizePreset.drawValueFontSize, lineHeight: '15px' }}>
               {expectedMinutesFromCustomTdp !== null
                 ? `${formatMinutes(expectedMinutesFromCustomTdp)}${deviceLabel ? ` (${deviceLabel})` : ''}`
@@ -207,11 +217,15 @@ const GameBatteryBadge: React.FC<GameBatteryBadgeProps> = () => {
           </div>
         )}
 
+        {pluginConfig.useBatteryTrackerTdp && !perGameTdpWatts && isBatteryTrackerDetected && importedTdpWatts === null && (
+          <div style={secondaryTextStyle}>Battery Tracker enabled, but no matching TDP data was found for this game.</div>
+        )}
+
         <div style={footerStyle}>
           <div style={secondaryTextStyle}>{reportCountText}</div>
           <div style={footerButtonsStyle}>
             <DialogButton style={{ ...buttonStyle, minWidth: '70px' }} onClick={openPerGameTdpModal}>
-              {perGameTdpWatts !== null ? `${perGameTdpWatts}W` : 'Set TDP'}
+              {perGameTdpWatts !== null ? `${perGameTdpWatts}W` : importedTdpWatts !== null ? `BT ${importedTdpWatts}W` : 'Set TDP'}
             </DialogButton>
             <DialogButton style={buttonStyle} onClick={openGameReport}>
               Reports

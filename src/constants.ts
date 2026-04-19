@@ -27,6 +27,7 @@ const legacyDefaultBatteryBadgeOffsetTop = 16
 export const defaultBatteryBadgeOffsetLeft = 0
 export const defaultBatteryBadgeOffsetTop = 0
 export const defaultBatteryBadgeSize: BatteryBadgeSize = 'regular'
+export const defaultUseBatteryTrackerTdp = false
 
 const validBadgeSizes = ['compact', 'regular', 'large'] as const
 const gameTdpOverridesKey = `${__PLUGIN_NAME__}:gameTdpOverrides`
@@ -207,6 +208,7 @@ export const getPluginConfig = (): PluginConfig => {
     batteryBadgeOffsetLeft: defaultBatteryBadgeOffsetLeft,
     batteryBadgeOffsetTop: defaultBatteryBadgeOffsetTop,
     batteryBadgeSize: defaultBatteryBadgeSize,
+    useBatteryTrackerTdp: defaultUseBatteryTrackerTdp,
     notificationSettings: { ...defaultNotificationSettings },
   }
   const dataJson = window.localStorage.getItem(pluginSettingsKey)
@@ -257,6 +259,8 @@ export const getPluginConfig = (): PluginConfig => {
   config.batteryBadgeSize = validBadgeSizes.includes(config.batteryBadgeSize)
     ? config.batteryBadgeSize
     : defaultBatteryBadgeSize
+  config.useBatteryTrackerTdp = Boolean(config.useBatteryTrackerTdp)
+
   // If the installation ID is not present, generate one and save it.
   if (!('installationId' in config) || !config.installationId) {
     config.installationId = generateUniqueId()

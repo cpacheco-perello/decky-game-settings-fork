@@ -364,6 +364,18 @@ const PluginConfigView: React.FC<PluginConfigViewProps> = ({ onGoBack }) => {
               </DialogButton>
             </div>
           </PanelSectionRow>
+          <PanelSectionRow>
+            <div style={fieldBlockStyle}>
+              <ToggleField
+                checked={Boolean(currentConfig.useBatteryTrackerTdp)}
+                label='Use Battery Tracker TDP when available'
+                onChange={(value) => updateConfig({ useBatteryTrackerTdp: value })}
+              />
+              <div style={helperTextStyle}>
+                If the Battery Tracker plugin is installed, use its per-game average power as fallback TDP.
+              </div>
+            </div>
+          </PanelSectionRow>
         </PanelSection>
 
         <PanelSection title='Library view'>

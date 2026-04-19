@@ -7,6 +7,7 @@ export interface PluginConfig {
   batteryBadgeOffsetLeft: number
   batteryBadgeOffsetTop: number
   batteryBadgeSize: BatteryBadgeSize
+  useBatteryTrackerTdp: boolean
   reportDraft?: ReportDraft
   notificationSettings?: NotificationSettings
 }
