@@ -91,7 +91,7 @@ export const Footer: React.FC = () => {
           ></div>
         )}
         <div style={{ display: 'inline', padding: '5px' }}>
-          Community-maintained fork. See README for acknowledgements.
+          Fork by CPP
         </div>
       </div>
     </div>
