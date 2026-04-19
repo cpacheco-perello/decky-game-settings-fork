@@ -6,6 +6,7 @@ type UseBatteryBadgeDataArgs = {
   appId?: number
   gameName?: string
   filterDevices?: string[]
+  preferNameLookup?: boolean
 }
 
 type BatterySummary = {
@@ -15,6 +16,8 @@ type BatterySummary = {
   reportCount: number
   batteryLifeMinutes: number | null
   averagePowerDraw: string | null
+  resolvedReportAppId: number | null
+  resolvedReportGameName: string | null
 }
 
 const emptySummary: BatterySummary = {
@@ -24,11 +27,118 @@ const emptySummary: BatterySummary = {
   reportCount: 0,
   batteryLifeMinutes: null,
   averagePowerDraw: null,
+  resolvedReportAppId: null,
+  resolvedReportGameName: null,
 }
 
 const normaliseText = (value: unknown): string => {
   if (typeof value !== 'string') return ''
   return value.trim().toLowerCase()
+}
+
+const normaliseGameNameForMatch = (value: unknown): string => {
+  if (typeof value !== 'string') return ''
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+const tokeniseName = (value: string): string[] =>
+  value
+    .split(' ')
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3)
+
+const collectGameNameCandidates = (details: GameDetails): string[] => {
+  const names = new Set<string>()
+
+  if (typeof details.gameName === 'string' && details.gameName.trim().length > 0) {
+    names.add(details.gameName)
+  }
+
+  ;[...(details.reports ?? []), ...(details.external_reviews ?? [])].forEach((entry) => {
+    const reportName = entry?.data?.game_name
+    if (typeof reportName === 'string' && reportName.trim().length > 0) {
+      names.add(reportName)
+    }
+  })
+
+  return [...names]
+}
+
+const isLikelySameGameByName = (requestedName: string, details: GameDetails | null): boolean => {
+  if (!details) return false
+
+  const requested = normaliseGameNameForMatch(requestedName)
+  if (!requested) return false
+
+  const requestedTokens = tokeniseName(requested)
+
+  const candidates = collectGameNameCandidates(details)
+    .map((value) => normaliseGameNameForMatch(value))
+    .filter((value) => value.length > 0)
+
+  return candidates.some((candidate) => {
+    if (candidate === requested) {
+      return true
+    }
+
+    if ((candidate.includes(requested) || requested.includes(candidate)) && Math.min(candidate.length, requested.length) >= 6) {
+      return true
+    }
+
+    if (requestedTokens.length === 0) {
+      return false
+    }
+
+    const candidateTokenSet = new Set(tokeniseName(candidate))
+    const matched = requestedTokens.filter((token) => candidateTokenSet.has(token)).length
+
+    if (requestedTokens.length === 1) {
+      return matched === 1
+    }
+
+    return matched >= 2 && matched / requestedTokens.length >= 0.67
+  })
+}
+
+const resolveReportGameName = (details: GameDetails | null): string | null => {
+  if (!details) return null
+
+  if (typeof details.gameName === 'string' && details.gameName.trim().length > 0) {
+    return details.gameName.trim()
+  }
+
+  for (const entry of [...(details.reports ?? []), ...(details.external_reviews ?? [])]) {
+    const reportName = entry?.data?.game_name
+    if (typeof reportName === 'string' && reportName.trim().length > 0) {
+      return reportName.trim()
+    }
+  }
+
+  return null
+}
+
+const resolveReportAppId = (details: GameDetails | null): number | null => {
+  if (!details) return null
+
+  if (typeof details.appId === 'number' && Number.isFinite(details.appId) && details.appId > 0) {
+    return details.appId
+  }
+
+  for (const entry of [...(details.reports ?? []), ...(details.external_reviews ?? [])]) {
+    const reportAppId = Number(entry?.data?.app_id)
+    if (Number.isInteger(reportAppId) && reportAppId > 0) {
+      return reportAppId
+    }
+  }
+
+  return null
 }
 
 const parseWatts = (raw: string): number | null => {
@@ -94,13 +204,30 @@ const resolveSummary = (
   details: GameDetails | null,
   selectedDevices: string[]
 ): Omit<BatterySummary, 'isLoading'> => {
-  if (!details) return emptySummary
+  if (!details) {
+    return {
+      ...emptySummary,
+      resolvedReportAppId: null,
+      resolvedReportGameName: null,
+    }
+  }
+
+  const resolvedReportAppId = resolveReportAppId(details)
+  const resolvedReportGameName = resolveReportGameName(details)
 
   const reports = details.reports ?? []
   const externalReviews = details.external_reviews ?? []
   const allEntries: Array<GameReport | ExternalReview> = [...reports, ...externalReviews]
   if (allEntries.length === 0) {
-    return emptySummary
+    return {
+      hasReports: false,
+      hasReportsOutsideDeviceFilter: false,
+      reportCount: 0,
+      batteryLifeMinutes: null,
+      averagePowerDraw: null,
+      resolvedReportAppId,
+      resolvedReportGameName,
+    }
   }
 
   const selectedDeviceSet = new Set(
@@ -119,6 +246,8 @@ const resolveSummary = (
       reportCount: 0,
       batteryLifeMinutes: null,
       averagePowerDraw: null,
+      resolvedReportAppId,
+      resolvedReportGameName,
     }
   }
 
@@ -167,6 +296,8 @@ const resolveSummary = (
     reportCount,
     batteryLifeMinutes,
     averagePowerDraw,
+    resolvedReportAppId,
+    resolvedReportGameName,
   }
 }
 
@@ -178,16 +309,22 @@ type BatterySummaryCacheEntry = {
 const batterySummaryCache = new Map<string, BatterySummaryCacheEntry>()
 const cacheTtlMs = 15 * 60 * 1000
 
-const createCacheKey = (appId: number | null, gameName: string | null, filterKey: string): string => {
+const createCacheKey = (
+  appId: number | null,
+  gameName: string | null,
+  filterKey: string,
+  lookupMode: 'name-first' | 'id-first'
+): string => {
   const source = appId ? `id:${appId}` : `name:${gameName ?? 'unknown'}`
   const deviceKey = filterKey.length > 0 ? filterKey : 'all-devices'
-  return `${source}|devices:${deviceKey}`
+  return `${source}|devices:${deviceKey}|mode:${lookupMode}`
 }
 
 export const useBatteryBadgeData = ({
   appId,
   gameName,
   filterDevices = [],
+  preferNameLookup = false,
 }: UseBatteryBadgeDataArgs): BatterySummary => {
   const [summary, setSummary] = useState<BatterySummary>(emptySummary)
 
@@ -213,6 +350,10 @@ export const useBatteryBadgeData = ({
   )
 
   const normalisedFilterDevices = useMemo(() => (filterKey.length > 0 ? filterKey.split('|') : []), [filterKey])
+  const lookupMode = useMemo<'name-first' | 'id-first'>(
+    () => (preferNameLookup && stableGameName ? 'name-first' : 'id-first'),
+    [preferNameLookup, stableGameName]
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -224,7 +365,7 @@ export const useBatteryBadgeData = ({
       }
     }
 
-    const cacheKey = createCacheKey(stableAppId, stableGameName, filterKey)
+    const cacheKey = createCacheKey(stableAppId, stableGameName, filterKey, lookupMode)
     const now = Date.now()
     const cached = batterySummaryCache.get(cacheKey)
     if (cached && now - cached.cachedAt < cacheTtlMs) {
@@ -246,14 +387,18 @@ export const useBatteryBadgeData = ({
       try {
         let details: GameDetails | null = null
 
-        if (stableAppId) {
-          details = await fetchGameDataByAppId(stableAppId)
-        }
-
-        if ((!hasEntries(details)) && stableGameName) {
+        if (lookupMode === 'name-first' && stableGameName) {
           const detailsByName = await fetchGameDataByGameName(stableGameName)
-          if (detailsByName) {
-            details = detailsByName
+          details = isLikelySameGameByName(stableGameName, detailsByName) ? detailsByName : null
+        } else {
+          if (stableAppId) {
+            details = await fetchGameDataByAppId(stableAppId)
+          }
+          if ((!hasEntries(details)) && stableGameName) {
+            const detailsByName = await fetchGameDataByGameName(stableGameName)
+            if (isLikelySameGameByName(stableGameName, detailsByName)) {
+              details = detailsByName
+            }
           }
         }
 
@@ -279,7 +424,7 @@ export const useBatteryBadgeData = ({
     return () => {
       cancelled = true
     }
-  }, [stableAppId, stableGameName, filterKey])
+  }, [stableAppId, stableGameName, filterKey, lookupMode])
 
   return summary
 }

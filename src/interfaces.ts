@@ -1,12 +1,11 @@
-export type BatteryBadgePosition = 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left'
-
 export type BatteryBadgeSize = 'compact' | 'regular' | 'large'
 
 export interface PluginConfig {
   installationId?: string
   filterDevices: string[]
   showAllApps: boolean
-  batteryBadgePosition: BatteryBadgePosition
+  batteryBadgeOffsetLeft: number
+  batteryBadgeOffsetTop: number
   batteryBadgeSize: BatteryBadgeSize
   reportDraft?: ReportDraft
   notificationSettings?: NotificationSettings
@@ -62,12 +61,7 @@ export interface GameDetails {
   external_reviews: ExternalReview[]
 }
 
-export interface GameMetadata {
-  poster: string | null
-  hero: string | null
-  banner: string | null
-  background: string | null
-}
+
 
 export interface GameReport {
   id: number

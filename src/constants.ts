@@ -3,7 +3,6 @@ import type {
   NotificationSettings,
   NotificationRecord,
   PluginConfig,
-  BatteryBadgePosition,
   BatteryBadgeSize,
 } from './interfaces'
 
@@ -18,11 +17,27 @@ export const defaultNotificationSettings: NotificationSettings = {
   notifyOncePerGame: false,
 }
 
-export const defaultBatteryBadgePosition: BatteryBadgePosition = 'top-right'
+export const batteryBadgeOffsetLeftRange = { min: 0, max: 1200 }
+export const batteryBadgeOffsetTopRange = { min: 0, max: 400 }
+export const batteryBadgeAverageTdpRange = { min: 0, max: 45 }
+
+const legacyDefaultBatteryBadgeOffsetLeft = 18
+const legacyDefaultBatteryBadgeOffsetTop = 16
+
+export const defaultBatteryBadgeOffsetLeft = 0
+export const defaultBatteryBadgeOffsetTop = 0
 export const defaultBatteryBadgeSize: BatteryBadgeSize = 'regular'
 
-const validBadgePositions = ['top-right', 'top-left', 'bottom-right', 'bottom-left'] as const
 const validBadgeSizes = ['compact', 'regular', 'large'] as const
+const gameTdpOverridesKey = `${__PLUGIN_NAME__}:gameTdpOverrides`
+
+type GameTdpOverrides = Record<string, number>
+
+const clampNumber = (value: unknown, min: number, max: number, fallback: number): number => {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.max(min, Math.min(max, Math.round(parsed)))
+}
 
 const notificationSettingsKey = `${__PLUGIN_NAME__}:notificationRecord`
 
@@ -104,11 +119,93 @@ export const generateUniqueId = (): string => {
 
 const pluginSettingsKey = __PLUGIN_NAME__
 
+export const makeGameTdpOverrideKey = (appId: number | undefined, gameName: string | null | undefined): string | null => {
+  if (typeof appId === 'number' && Number.isFinite(appId) && appId > 0) {
+    return `id:${appId}`
+  }
+  if (typeof gameName !== 'string') {
+    return null
+  }
+  const normalizedName = gameName.trim().toLowerCase()
+  if (normalizedName.length === 0) {
+    return null
+  }
+  return `name:${normalizedName}`
+}
+
+const normalizeGameTdpOverrides = (raw: unknown): GameTdpOverrides => {
+  if (!raw || typeof raw !== 'object') {
+    return {}
+  }
+
+  const normalized: GameTdpOverrides = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof key !== 'string' || key.trim().length === 0) {
+      continue
+    }
+    const watts = clampNumber(value, batteryBadgeAverageTdpRange.min, batteryBadgeAverageTdpRange.max, 0)
+    if (watts > 0) {
+      normalized[key] = watts
+    }
+  }
+
+  return normalized
+}
+
+export const loadGameTdpOverrides = (): GameTdpOverrides => {
+  const raw = window.localStorage.getItem(gameTdpOverridesKey)
+  if (!raw) {
+    return {}
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    return normalizeGameTdpOverrides(parsed)
+  } catch (error) {
+    console.error('[decky-game-settings:constants] Failed to parse game TDP overrides:', error)
+    return {}
+  }
+}
+
+export const saveGameTdpOverrides = (overrides: GameTdpOverrides): void => {
+  try {
+    window.localStorage.setItem(gameTdpOverridesKey, JSON.stringify(overrides))
+  } catch (error) {
+    console.error('[decky-game-settings:constants] Failed to save game TDP overrides:', error)
+  }
+}
+
+export const getGameTdpOverrideWatts = (key: string | null): number | null => {
+  if (!key) {
+    return null
+  }
+  const overrides = loadGameTdpOverrides()
+  const value = overrides[key]
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
+}
+
+export const setGameTdpOverrideWatts = (key: string | null, watts: number | null): void => {
+  if (!key) {
+    return
+  }
+
+  const overrides = loadGameTdpOverrides()
+  const safeWatts = clampNumber(watts, batteryBadgeAverageTdpRange.min, batteryBadgeAverageTdpRange.max, 0)
+
+  if (safeWatts <= 0) {
+    delete overrides[key]
+  } else {
+    overrides[key] = safeWatts
+  }
+
+  saveGameTdpOverrides(overrides)
+}
+
 export const getPluginConfig = (): PluginConfig => {
   const defaultConfig: PluginConfig = {
     filterDevices: [],
     showAllApps: false,
-    batteryBadgePosition: defaultBatteryBadgePosition,
+    batteryBadgeOffsetLeft: defaultBatteryBadgeOffsetLeft,
+    batteryBadgeOffsetTop: defaultBatteryBadgeOffsetTop,
     batteryBadgeSize: defaultBatteryBadgeSize,
     notificationSettings: { ...defaultNotificationSettings },
   }
@@ -125,13 +222,38 @@ export const getPluginConfig = (): PluginConfig => {
       console.error('[decky-game-settings:constants] Failed to parse plugin config:', error)
     }
   }
+
+  // Legacy cleanup: global average TDP is no longer supported.
+  if ('batteryBadgeAverageTdpWatts' in (config as any)) {
+    delete (config as any).batteryBadgeAverageTdpWatts
+  }
+
   config.notificationSettings = {
     ...defaultNotificationSettings,
     ...(config.notificationSettings ?? {}),
   }
-  config.batteryBadgePosition = validBadgePositions.includes(config.batteryBadgePosition)
-    ? config.batteryBadgePosition
-    : defaultBatteryBadgePosition
+  config.batteryBadgeOffsetLeft = clampNumber(
+    config.batteryBadgeOffsetLeft,
+    batteryBadgeOffsetLeftRange.min,
+    batteryBadgeOffsetLeftRange.max,
+    defaultBatteryBadgeOffsetLeft
+  )
+  config.batteryBadgeOffsetTop = clampNumber(
+    config.batteryBadgeOffsetTop,
+    batteryBadgeOffsetTopRange.min,
+    batteryBadgeOffsetTopRange.max,
+    defaultBatteryBadgeOffsetTop
+  )
+
+  // Legacy migration for old absolute-position defaults.
+  if (
+    config.batteryBadgeOffsetLeft === legacyDefaultBatteryBadgeOffsetLeft &&
+    config.batteryBadgeOffsetTop === legacyDefaultBatteryBadgeOffsetTop
+  ) {
+    config.batteryBadgeOffsetLeft = defaultBatteryBadgeOffsetLeft
+    config.batteryBadgeOffsetTop = defaultBatteryBadgeOffsetTop
+  }
+
   config.batteryBadgeSize = validBadgeSizes.includes(config.batteryBadgeSize)
     ? config.batteryBadgeSize
     : defaultBatteryBadgeSize
@@ -154,6 +276,12 @@ export const setPluginConfig = (updates: Partial<PluginConfig>): void => {
       ...(updates.notificationSettings ?? {}),
     },
   }
+
+  // Legacy cleanup: global average TDP is no longer supported.
+  if ('batteryBadgeAverageTdpWatts' in (newConfig as any)) {
+    delete (newConfig as any).batteryBadgeAverageTdpWatts
+  }
+
   try {
     window.localStorage.setItem(pluginSettingsKey, JSON.stringify(newConfig))
     //console.debug('[decky-game-settings:constants] Plugin configuration updated:', newConfig)

@@ -18,25 +18,23 @@ const patchLibraryApp = () =>
           findInReactTree(reactTree, (value: any) => value?.props?.children?.props?.overview)?.props?.children,
       ],
       (_: Array<Record<string, unknown>>, ret?: ReactElement) => {
-        const container = findInReactTree(
+        const alreadyInjected = findInReactTree(ret, (value: any) => value?.props?.['data-decky-game-settings-battery-badge'])
+        if (alreadyInjected) {
+          return ret
+        }
+
+        const fallbackContainer = findInReactTree(
           ret,
           (value: ReactElement) =>
             Array.isArray(value?.props?.children) &&
             value?.props?.className?.includes?.(appDetailsClasses.InnerContainer)
         )
 
-        if (typeof container !== 'object' || !Array.isArray(container?.props?.children)) {
+        if (typeof fallbackContainer !== 'object' || !Array.isArray(fallbackContainer?.props?.children)) {
           return ret
         }
 
-        const alreadyInjected = container.props.children.some(
-          (child: any) => child?.props?.['data-decky-game-settings-battery-badge']
-        )
-        if (alreadyInjected) {
-          return ret
-        }
-
-        container.props.children.splice(
+        fallbackContainer.props.children.splice(
           1,
           0,
           <GameBatteryBadge

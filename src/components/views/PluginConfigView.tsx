@@ -1,17 +1,20 @@
-import { PanelSection, PanelSectionRow, DialogButton, Focusable, ToggleField, Dropdown, ButtonItem, showModal } from '@decky/ui'
+import { PanelSection, PanelSectionRow, DialogButton, Focusable, ToggleField, Dropdown, ButtonItem, showModal, SliderField } from '@decky/ui'
 import { useState, useEffect, CSSProperties, useMemo } from 'react'
 import { MdArrowBack } from 'react-icons/md'
-import type { Devices, PluginConfig, NotificationSettings, BatteryBadgePosition, BatteryBadgeSize } from '../../interfaces'
+import type { Devices, PluginConfig, NotificationSettings, BatteryBadgeSize } from '../../interfaces'
 import {
   getPluginConfig,
   setPluginConfig,
   defaultNotificationSettings,
-  defaultBatteryBadgePosition,
+  batteryBadgeOffsetLeftRange,
+  batteryBadgeOffsetTopRange,
+  defaultBatteryBadgeOffsetLeft,
+  defaultBatteryBadgeOffsetTop,
   defaultBatteryBadgeSize,
 } from '../../constants'
 import { fetchDeviceList } from '../../hooks/deckVerifiedApi'
 import { PanelSocialButton } from '../elements/SocialButton'
-import { SiDiscord, SiGithub, SiKofi, SiPatreon } from 'react-icons/si'
+import { SiGithub } from 'react-icons/si'
 import { popupLoginDialog } from '../elements/LoginDialog'
 import { SelectModal } from '../elements/SelectModal'
 import {
@@ -55,13 +58,6 @@ const actionButtonStyle: CSSProperties = {
   padding: '6px 10px',
   fontSize: '12px',
 }
-
-const badgePositionOptions: Array<{ label: string; value: BatteryBadgePosition }> = [
-  { label: 'Top right', value: 'top-right' },
-  { label: 'Top left', value: 'top-left' },
-  { label: 'Bottom right', value: 'bottom-right' },
-  { label: 'Bottom left', value: 'bottom-left' },
-]
 
 const badgeSizeOptions: Array<{ label: string; value: BatteryBadgeSize }> = [
   { label: 'Compact', value: 'compact' },
@@ -183,35 +179,31 @@ const PluginConfigView: React.FC<PluginConfigViewProps> = ({ onGoBack }) => {
     [deviceList, currentConfig.filterDevices]
   )
 
-  const selectedBadgePositionIndex = Math.max(
-    0,
-    badgePositionOptions.findIndex((option) => option.value === currentConfig.batteryBadgePosition)
-  )
   const selectedBadgeSizeIndex = Math.max(0, badgeSizeOptions.findIndex((option) => option.value === currentConfig.batteryBadgeSize))
 
-  const selectedBadgePositionLabel =
-    badgePositionOptions[selectedBadgePositionIndex]?.label ||
-    badgePositionOptions.find((option) => option.value === defaultBatteryBadgePosition)?.label ||
-    'Top right'
   const selectedBadgeSizeLabel =
     badgeSizeOptions[selectedBadgeSizeIndex]?.label ||
     badgeSizeOptions.find((option) => option.value === defaultBatteryBadgeSize)?.label ||
     'Regular'
 
-  const openBadgePositionSelector = () => {
-    showModal(
-      <SelectModal
-        label='Select badge position'
-        options={badgePositionOptions.map((option) => option.label)}
-        selectedIndex={selectedBadgePositionIndex}
-        onClosed={(_value, index) => {
-          if (typeof index !== 'number') return
-          const next = badgePositionOptions[index]
-          if (!next) return
-          updateConfig({ batteryBadgePosition: next.value })
-        }}
-      />
-    )
+  const updateBadgeOffsetLeft = (value: number) => {
+    const rounded = Math.round(value)
+    updateConfig({
+      batteryBadgeOffsetLeft: Math.max(
+        batteryBadgeOffsetLeftRange.min,
+        Math.min(batteryBadgeOffsetLeftRange.max, rounded)
+      ),
+    })
+  }
+
+  const updateBadgeOffsetTop = (value: number) => {
+    const rounded = Math.round(value)
+    updateConfig({
+      batteryBadgeOffsetTop: Math.max(
+        batteryBadgeOffsetTopRange.min,
+        Math.min(batteryBadgeOffsetTopRange.max, rounded)
+      ),
+    })
   }
 
   const openBadgeSizeSelector = () => {
@@ -331,11 +323,36 @@ const PluginConfigView: React.FC<PluginConfigViewProps> = ({ onGoBack }) => {
         <PanelSection title='Game page badge'>
           <PanelSectionRow>
             <div style={fieldBlockStyle}>
-              <div style={fieldHeadingStyle}>Badge position</div>
-              <div style={helperTextStyle}>Choose where the battery badge appears in the game page header.</div>
-              <DialogButton style={actionButtonStyle} onClick={openBadgePositionSelector}>
-                {selectedBadgePositionLabel}
-              </DialogButton>
+              <div style={fieldHeadingStyle}>Horizontal offset (left)</div>
+              <div style={helperTextStyle}>
+                Distance from the left edge: {currentConfig.batteryBadgeOffsetLeft ?? defaultBatteryBadgeOffsetLeft}px
+              </div>
+              <SliderField
+                value={currentConfig.batteryBadgeOffsetLeft ?? defaultBatteryBadgeOffsetLeft}
+                min={batteryBadgeOffsetLeftRange.min}
+                max={batteryBadgeOffsetLeftRange.max}
+                step={1}
+                showValue
+                valueSuffix='px'
+                onChange={updateBadgeOffsetLeft}
+              />
+            </div>
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <div style={fieldBlockStyle}>
+              <div style={fieldHeadingStyle}>Vertical offset (top)</div>
+              <div style={helperTextStyle}>
+                Distance from the top edge: {currentConfig.batteryBadgeOffsetTop ?? defaultBatteryBadgeOffsetTop}px
+              </div>
+              <SliderField
+                value={currentConfig.batteryBadgeOffsetTop ?? defaultBatteryBadgeOffsetTop}
+                min={batteryBadgeOffsetTopRange.min}
+                max={batteryBadgeOffsetTopRange.max}
+                step={1}
+                showValue
+                valueSuffix='px'
+                onChange={updateBadgeOffsetTop}
+              />
             </div>
           </PanelSectionRow>
           <PanelSectionRow>
@@ -397,18 +414,9 @@ const PluginConfigView: React.FC<PluginConfigViewProps> = ({ onGoBack }) => {
         </PanelSection>
         <hr />
         <PanelSection>
-          <PanelSocialButton icon={<SiPatreon fill='#438AB9' />} url='https://www.patreon.com/c/Josh5'>
-            Patreon
-          </PanelSocialButton>
-          <PanelSocialButton icon={<SiKofi fill='#FF5E5B' />} url='https://ko-fi.com/josh5coffee'>
-            Ko-fi
-          </PanelSocialButton>
-          <PanelSocialButton icon={<SiDiscord fill='#5865F2' />} url='https://streamingtech.co.nz/discord'>
-            Discord
-          </PanelSocialButton>
           <PanelSocialButton
             icon={<SiGithub fill='#f5f5f5' />}
-            url='https://github.com/DeckSettings/decky-game-settings'
+            url='https://github.com/cpacheco-perello/decky-game-settings-fork'
           >
             Plugin Source
           </PanelSocialButton>

@@ -1,8 +1,8 @@
-# Deck Settings
+# Decky Game Settings Fork
 
 [![Chat](https://img.shields.io/badge/chat-on%20discord-7289da.svg)](https://streamingtech.co.nz/discord)
 
-"Deck Settings" is a plugin for Decky Loader that fetches and displays community-driven game compatibility and configuration reports directly from the [Deck Settings API](https://deckverified.games/). These reports, sourced from the open-source [game-reports-steamos repository](https://github.com/DeckSettings/game-reports-steamos), provide optimized performance tweaks, graphics settings, and compatibility information for handheld gaming devices like the Steam Deck.
+This project is a community-maintained fork of the Deck Settings plugin for Decky Loader. It fetches and displays community-driven game compatibility and configuration reports directly from the [Deck Settings API](https://deckverified.games/). These reports, sourced from the open-source [game-reports-steamos repository](https://github.com/DeckSettings/game-reports-steamos), provide optimized performance tweaks, graphics settings, and compatibility information for handheld gaming devices like the Steam Deck.
 
 ## Features
 - Fetches game compatibility reports for devices like Steam Deck, ROG Ally, and others.
@@ -23,7 +23,7 @@ Please make sure to install pnpm v9 to prevent issues with CI during plugin subm
 npm i -g pnpm@9
 ```
 
-### Building Deck Settings
+### Building This Fork
 
 1. Clone the repository.
 2. In your local fork/own plugin-repository run these commands:
@@ -44,3 +44,9 @@ Note: If you are receiving build errors due to an out of date library, you shoul
 ```bash
 pnpm update @decky/ui --latest
 ```
+
+## Acknowledgements
+
+- Original project: Deck Settings by Josh.5 (Josh Sunnex).
+- Community data source: [DeckSettings/game-reports-steamos](https://github.com/DeckSettings/game-reports-steamos).
+- This fork continues under the same BSD-3-Clause license terms in [LICENSE](LICENSE).
