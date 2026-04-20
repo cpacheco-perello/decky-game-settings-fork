@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { ExternalReview, GameDetails, GameReport } from '../interfaces'
-import { fetchGameDataByAppId, fetchGameDataByGameName } from './deckVerifiedApi'
+import type { ExternalReview, GameDetails, GameInfo, GameReport } from '../interfaces'
+import { fetchGameDataByAppId, fetchGameDataByGameName, getGamesBySearchTerm } from './deckVerifiedApi'
 
 type UseBatteryBadgeDataArgs = {
   appId?: number
@@ -54,6 +54,32 @@ const tokeniseName = (value: string): string[] =>
     .map((token) => token.trim())
     .filter((token) => token.length >= 3)
 
+const extractNumberTokens = (value: string): string[] => value.match(/\b\d+\b/g) ?? []
+
+const hasSameNumberTokens = (left: string, right: string): boolean => {
+  const leftTokens = [...new Set(extractNumberTokens(left))]
+  const rightTokens = [...new Set(extractNumberTokens(right))]
+
+  if (leftTokens.length === 0 && rightTokens.length === 0) return true
+  if (leftTokens.length !== rightTokens.length) return false
+
+  return leftTokens.every((token) => rightTokens.includes(token))
+}
+
+const findExactGameSearchMatch = (requestedName: string, candidates: GameInfo[] | null): GameInfo | null => {
+  if (!Array.isArray(candidates) || candidates.length === 0) return null
+
+  const requested = normaliseGameNameForMatch(requestedName)
+  if (!requested) return null
+
+  return (
+    candidates.find((candidate) => {
+      const candidateName = normaliseGameNameForMatch(candidate?.title)
+      return candidateName.length > 0 && candidateName === requested
+    }) ?? null
+  )
+}
+
 const collectGameNameCandidates = (details: GameDetails): string[] => {
   const names = new Set<string>()
 
@@ -84,11 +110,11 @@ const isLikelySameGameByName = (requestedName: string, details: GameDetails | nu
     .filter((value) => value.length > 0)
 
   return candidates.some((candidate) => {
-    if (candidate === requested) {
-      return true
+    if (!hasSameNumberTokens(requested, candidate)) {
+      return false
     }
 
-    if ((candidate.includes(requested) || requested.includes(candidate)) && Math.min(candidate.length, requested.length) >= 6) {
+    if (candidate === requested) {
       return true
     }
 
@@ -96,14 +122,15 @@ const isLikelySameGameByName = (requestedName: string, details: GameDetails | nu
       return false
     }
 
-    const candidateTokenSet = new Set(tokeniseName(candidate))
+    const candidateTokens = tokeniseName(candidate)
+    const candidateTokenSet = new Set(candidateTokens)
     const matched = requestedTokens.filter((token) => candidateTokenSet.has(token)).length
 
-    if (requestedTokens.length === 1) {
-      return matched === 1
+    if (matched !== requestedTokens.length) {
+      return false
     }
 
-    return matched >= 2 && matched / requestedTokens.length >= 0.67
+    return Math.abs(candidateTokens.length - requestedTokens.length) <= 1
   })
 }
 
@@ -388,8 +415,24 @@ export const useBatteryBadgeData = ({
         let details: GameDetails | null = null
 
         if (lookupMode === 'name-first' && stableGameName) {
-          const detailsByName = await fetchGameDataByGameName(stableGameName)
-          details = isLikelySameGameByName(stableGameName, detailsByName) ? detailsByName : null
+          const searchMatches = await getGamesBySearchTerm(stableGameName)
+          const exactMatch = findExactGameSearchMatch(stableGameName, searchMatches)
+
+          if (
+            exactMatch?.appId &&
+            Number.isFinite(exactMatch.appId) &&
+            exactMatch.appId > 0
+          ) {
+            const detailsByAppId = await fetchGameDataByAppId(exactMatch.appId)
+            if (isLikelySameGameByName(stableGameName, detailsByAppId)) {
+              details = detailsByAppId
+            }
+          }
+
+          if (!details) {
+            const detailsByName = await fetchGameDataByGameName(stableGameName)
+            details = isLikelySameGameByName(stableGameName, detailsByName) ? detailsByName : null
+          }
         } else {
           if (stableAppId) {
             details = await fetchGameDataByAppId(stableAppId)

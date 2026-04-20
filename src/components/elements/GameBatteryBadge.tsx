@@ -128,20 +128,21 @@ const GameBatteryBadge: React.FC<GameBatteryBadgeProps> = () => {
       return
     }
 
-    if (shouldPreferNameLookup && routeGameName) {
-      Navigation.NavigateToExternalWeb(`${reportsWebsiteBaseUrl}/game/${encodeURIComponent(routeGameName)}`)
-      return
-    }
-
-    if (validAppId) {
+    if (validAppId && !shouldPreferNameLookup) {
       Navigation.NavigateToExternalWeb(`${reportsWebsiteBaseUrl}/app/${validAppId}`)
       return
     }
 
-    if (routeGameName) {
+    if (routeGameName && !shouldPreferNameLookup) {
       Navigation.NavigateToExternalWeb(`${reportsWebsiteBaseUrl}/game/${encodeURIComponent(routeGameName)}`)
     }
   }
+
+  const canOpenReport =
+    Boolean(summary.resolvedReportAppId) ||
+    Boolean(summary.resolvedReportGameName) ||
+    Boolean(validAppId && !shouldPreferNameLookup) ||
+    Boolean(routeGameName && !shouldPreferNameLookup)
 
   let batteryValue = 'No data yet'
   if (summary.isLoading) {
@@ -240,7 +241,7 @@ const GameBatteryBadge: React.FC<GameBatteryBadgeProps> = () => {
                 ? importedTdpWatts !== null ? `BT ${importedTdpWatts}W` : 'BT --'
                 : perGameTdpWatts !== null ? `${perGameTdpWatts}W` : 'Set TDP'}
             </DialogButton>
-            <DialogButton style={buttonStyle} onClick={openGameReport}>
+            <DialogButton style={buttonStyle} onClick={openGameReport} disabled={!canOpenReport || summary.isLoading}>
               Reports
             </DialogButton>
           </div>

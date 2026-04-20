@@ -28,7 +28,7 @@ jobs:
         id: prepare
         run: |
           plugin_version=$(node -p "require('./package.json').version")
-          echo "plugin_name=decky-game-settings" >> $GITHUB_OUTPUT
+          echo "plugin_name=decky-game-settings-fork" >> $GITHUB_OUTPUT
           echo "plugin_version=${plugin_version:?}" >> $GITHUB_OUTPUT
 
       # Install dependencies
